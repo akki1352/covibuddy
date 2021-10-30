@@ -7,9 +7,10 @@ from django.shortcuts import render, resolve_url
 from django.http import HttpResponse, JsonResponse, HttpResponseBadRequest
 from django.views import View
 from django.views.decorators.csrf import ensure_csrf_cookie
-from vaccination.models import Bookings, BookingsType, Hospitals, VaccineType, VaccineCentre, Users
+from vaccination.models import Bookings, BookingsType, Hospitals, Users, Suppliers, Volunteer, Ambulances, CovidTestingLabs, CovidCareCentres
 from django.db.utils import IntegrityError
 from datetime import datetime
+import pandas as pd
 
 class Login(View):
 
@@ -25,7 +26,8 @@ class Login(View):
                     'name': user.name,
                     'email': user.email,
                     'type': user.type,
-                    'contact': user.contact
+                    'contact': user.contact,
+                    'location': user.location,
                 },
                 'message': 'success' 
             }
@@ -55,7 +57,8 @@ class User(View):
                         'id': user.id,
                         'name': user.name,
                         'email': user.email,
-                        'contact': user.contact
+                        'contact': user.contact,
+                        'location': user.location,
                     },
                     'message': 'success' 
                 }
@@ -72,25 +75,27 @@ class User(View):
         password = body.get('password', None)
         type = body.get('type', None)
         contact = body.get('contact', None)
+        location = body.get('location', None)
         try:
-            user = Users.objects.create(name=name, email=email, password=password, type=type, contact=contact)
+            user = Users.objects.create(name=name, email=email, password=password, type=type, contact=contact, location=location)
             resp = {
                 'user':{
                     'id': user.id,
                     'name': user.name,
                     'email': user.email,
+                    'type': user.type,
+                    'contact': user.contact,
+                    'location': user.location,
                 },
                 'message': 'success' 
             }
             response = JsonResponse(resp)
-            response.headers['Access-Control-Allow-Origin'] = '*'
-            response.headers['Access-Control-Allow-Methods'] = 'PUT, GET, POST, DELETE, OPTIONS'
-            response.headers['Access-Control-Allow-Headers'] = 'Origin, Accept, Content-Type, X-Requested-With, X-CSRF-Token'
-            response.headers['Content-Type'] = "text/html; charset=utf-8"
             return response
         except IntegrityError as ite:
+            print(ite)
             return HttpResponseForbidden("Email Id already exists")
         except Exception as e:
+            print(e)
             return HttpResponseServerError("Some Error occured")
 
     def put(self, request):
@@ -100,8 +105,9 @@ class User(View):
         password = body.get('password', None)
         type = body.get('type', None)
         contact = body.get('contact', None)
+        location = body.get('location', None)
         try:
-            user = Users.objects.filter(email=email).update(name=name, contact=contact)
+            user = Users.objects.filter(email=email).update(name=name, contact=contact, location=location)
             print(body, user)
             return HttpResponse("User Updated Successfully.")
         except Exception as e:
@@ -258,7 +264,7 @@ class Hospital(View):
         id = kwargs.get('id', None)
         try:
             if id == None:
-                hospital = Hospitals.objects.all()
+                hospital = Hospitals.objects.all()[:10]
                 response = {
                     'hospitals': list(hospital.values()),
                 }
@@ -337,16 +343,183 @@ class Hospital(View):
             print(e)
             return HttpResponseServerError('Server Error Occured')
 
-def VaccineTypes(request):
-    vaccineType = VaccineType.objects.all()
-    vList = list(vaccineType.values())
-    response = {}
-    response['VaccineTypes'] = vList
-    return JsonResponse(response, content_type='application/json')
+class Supplier(View):
 
-def VaccineCentres(request):
-    vaccineCentre = VaccineCentre.objects.all()
-    vList = list(vaccineCentre.values())
-    response = {}
-    response['vaccineCentres'] = vList
-    return JsonResponse(response, content_type='application/json')
+    def get(self, request, *args, **kwargs):
+        id = kwargs.get('id', None)
+        try:
+            if id == None:
+                suppliers = Suppliers.objects.all()[:10]
+                response = {
+                    'suppliers': list(suppliers.values()),
+                }
+                return JsonResponse(response, content_type='application/json')
+            else:
+                supplier = Suppliers.objects.get(id=id)
+                response = {
+                    'supplier':{
+                        'id': supplier.id,
+                        'name': supplier.name,
+                        'supplyType': supplier.supplyType,
+                        'stock': supplier.stock,
+                        'location': supplier.location,
+                        'contact': supplier.contact
+                    },
+                }
+                return JsonResponse(response, content_type='application/json')
+        except Suppliers.DoesNotExist as e:
+            return HttpResponse('Supplier details does not exist', status=401)
+        except Exception as e:
+            print(e)
+            return HttpResponseServerError('Server Error Occured')
+    
+    def post(self, request):
+        body = json.loads(request.body)
+        name = body.get('name', None)
+        supplyType = body.get('supplyType', None)
+        stock = body.get('stock', None)
+        location = body.get('location', None)
+        contact = body.get('contact', None)
+        try:
+            supplier = Suppliers.objects.create(name=name, supplyType=supplyType, stock= stock, location= location, contact= contact)
+            response = {
+                'supplier':{
+                    'id': supplier.id,
+                    'name': supplier.name,
+                    'supplyType': supplier.supplyType,
+                    'stock': supplier.stock,
+                    'location': supplier.location,
+                },
+            }
+            return JsonResponse(response, content_type='application/json')
+        except IntegrityError as ite:
+            return HttpResponseForbidden("supplier name already exists")
+        except Exception as e:
+            return HttpResponseServerError('Server Error Occured')
+    
+    def put(self, request):
+        body = json.loads(request.body)
+        name = body.get('name', None)
+        supplyType = body.get('supplyType', None)
+        stock = body.get('stock', None)
+        location = body.get('location', None)
+        contact = body.get('contact', None)
+        try:
+            supplier = Suppliers.objects.filter(name=name).update(supplyType=supplyType, stock= stock, location= location, contact= contact)
+            response = {
+                'message': 'Supplier details updated successfully' 
+            }
+            return JsonResponse(response, content_type='application/json')
+        except IntegrityError as ite:
+            return HttpResponseForbidden("Supplier name already exists")
+        except Exception as e:
+            return HttpResponseServerError('Server Error Occured')
+    
+    def delete(self, request):
+        body = json.loads(request.body)
+        name = body.get('name', None)
+        try:
+            Suppliers.objects.filter(name=name).delete()
+            response = {
+                'message': 'Supplier details deleted successfully' 
+            }
+            return JsonResponse(response, content_type='application/json')
+        except Exception as e:
+            return HttpResponseServerError('Server Error Occured')
+
+class Volunteers(View):
+
+    def get(self, request, *args, **kwargs):
+        id = kwargs.get('id', None)
+        try:
+            if id == None:
+                volunteers = Volunteer.objects.all()[:10]
+                response = {
+                    'volunteers': list(volunteers.values()),
+                }
+                return JsonResponse(response, content_type='application/json')
+            else:
+                volunteer = Volunteer.objects.get(id=id)
+                response = {
+                    'volunteer':{
+                        'id': volunteer.id,
+                        'name': volunteer.name,
+                        'location': volunteer.location,
+                        'contact': volunteer.contact
+                    },
+                }
+                return JsonResponse(response, content_type='application/json')
+        except Volunteer.DoesNotExist as e:
+            return HttpResponse('Volunteer details does not exist', status=401)
+        except Exception as e:
+            print(e)
+            return HttpResponseServerError('Server Error Occured')
+    
+    def post(self, request):
+        body = json.loads(request.body)
+        name = body.get('name', None)
+        location = body.get('location', None)
+        contact = body.get('contact', None)
+        try:
+            volunteer = Volunteer.objects.create(name=name, location= location, contact= contact)
+            response = {
+                'volunteer':{
+                    'id': volunteer.id,
+                    'name': volunteer.name,
+                    'location': volunteer.location,
+                    'contact': volunteer.contact,
+                },
+            }
+            return JsonResponse(response, content_type='application/json')
+        except IntegrityError as ite:
+            return HttpResponseForbidden("Volunteer name already exists")
+        except Exception as e:
+            return HttpResponseServerError('Server Error Occured')
+    
+    def put(self, request):
+        body = json.loads(request.body)
+        name = body.get('name', None)
+        location = body.get('location', None)
+        contact = body.get('contact', None)
+        try:
+            volunteer = Volunteer.objects.filter(name=name).update(location= location, contact= contact)
+            response = {
+                'message': 'Volunteer details updated successfully' 
+            }
+            return JsonResponse(response, content_type='application/json')
+        except IntegrityError as ite:
+            return HttpResponseForbidden("Volunteer name already exists")
+        except Exception as e:
+            return HttpResponseServerError('Server Error Occured')
+    
+    def delete(self, request):
+        body = json.loads(request.body)
+        name = body.get('name', None)
+        try:
+            Volunteer.objects.filter(name=name).delete()
+            response = {
+                'message': 'Volunteer details deleted successfully' 
+            }
+            return JsonResponse(response, content_type='application/json')
+        except Exception as e:
+            return HttpResponseServerError('Server Error Occured')
+
+def Insertion(request):
+    print('Reading CSV')
+    data = pd.read_csv(r'/mnt/c/Users/GS-2286/Documents/Projects/DBAssignment/db/CovidCareCentres.csv')
+    df = pd.DataFrame(data)
+    # print(df)
+    for row in df.itertuples():
+        # print(row.name, row.bedType, row.availability, row.location, row.contact)
+        try:
+            # Hospitals.objects.create(name=row.name, bedType=row.bedType, availability= row.availability, location= row.location, contact= row.contact)
+            # Users.objects.create(fname=row.FName, lname=row.LName, contact= row.Contact, location= row.Location)
+            # Suppliers.objects.create(name=row.name, supplyType=row.sypplyType, stock= row.Stock, location= row.location, contact= row.contact)
+            # Volunteer.objects.create(name=row.name, location= row.location, contact= row.contact)
+            # Ambulances.objects.create(name=row.name, fare=row.fare, location= row.location, contact= row.contact)
+            CovidCareCentres.objects.create(name=row.name, type=row.type, location= row.location, contact= row.contact, availability=row.availability)
+        except Exception as e:
+            print(e)
+            pass
+
+    return HttpResponse('success')
